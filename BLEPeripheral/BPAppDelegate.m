@@ -74,11 +74,13 @@
 
 @property (nonatomic, strong) CBPeripheralManager *peripheralManager;
 @property (nonatomic, strong) CBMutableService *service;
-
+@property (weak) IBOutlet NSButton *sendButton;
+@property CBMutableCharacteristic* mycharac;
 @end
 
 
 @implementation BPAppDelegate
+
 
 //#define XPC_SPY 1
 
@@ -108,11 +110,22 @@
     
     if (CBPeripheralManagerStatePoweredOn == peripheral.state) {
         
-        NSData *zombie = [@"zombie" dataUsingEncoding:NSUTF8StringEncoding];
-        CBMutableCharacteristic *characteristic = [[CBMutableCharacteristic alloc] initWithType:[CBUUID UUIDWithString:@"DDCA9B49-A6F5-462F-A89A-C2144083CA7F"] properties:CBCharacteristicPropertyRead value:zombie permissions:CBAttributePermissionsReadable];
+       
+         self.mycharac = [[CBMutableCharacteristic alloc]
+                                                   // init UUID of characteristics
+                                                   initWithType:[CBUUID UUIDWithString:@"A254"]
+                                                   // init properties of characteristic
+                                                   properties:CBCharacteristicPropertyWriteWithoutResponse|CBCharacteristicPropertyRead|CBCharacteristicPropertyNotify
+                                                   value:nil
+                                                   permissions:CBAttributePermissionsWriteable | CBAttributePermissionsReadable];
         
-        self.service = [[CBMutableService alloc] initWithType:[CBUUID UUIDWithString:@"BD0F6577-4A38-4D71-AF1B-4E8F57708080"] primary:YES];
-        self.service.characteristics = @[characteristic];
+        self.service = [[CBMutableService alloc]
+                        // init UUID of service
+                        initWithType:[CBUUID UUIDWithString:@"19CE"]
+                        primary:YES];
+        
+        // include characeteristics into service
+        self.service.characteristics = @[self.mycharac];
         
         [self.peripheralManager addService:self.service];
     } else {
@@ -134,6 +147,52 @@
     [peripheral startAdvertising:@{
                                    CBAdvertisementDataLocalNameKey: @"hello"
                                    }];
+}
+
+
+-(void)peripheralManager:(CBPeripheralManager *)peripheral didReceiveReadRequests:(NSArray *)requests {
+    NSLog(@"didReceiveReadRequest");
+}
+
+
+
+// invoke when write properties is requested
+-(void)peripheralManager:(CBPeripheralManager *)peripheral didReceiveWriteRequests:(NSArray *)requests {
+    NSLog(@"didReceiveWriteRequest");
+    for(CBATTRequest* req in requests){
+        
+        // data receive and convert NSData (req.value) to NSString
+        NSString* str = [[NSString alloc]
+                         initWithData:req.value
+                         encoding:NSUTF8StringEncoding];
+        
+        NSLog(str);
+        
+        
+        // sleep for 1 seconds
+        [self performSelector:@selector(timerFireMethod:) withObject:req afterDelay:0.5];
+        
+    }
+    
+}
+
+-(void)timerFireMethod:(CBATTRequest *)incomingReq  {
+    
+    
+    CBATTRequest* r = [self.service.characteristics objectAtIndex:0 ];
+    // change the characteristic data by assign it
+    r.value = incomingReq.value;
+    
+    // Notify the central that data is changed.
+    BOOL didSendValue = [self.peripheralManager updateValue:r.value
+                                          forCharacteristic:self.mycharac
+                                       onSubscribedCentrals:nil];
+    
+    NSLog(@"timerFireMethod %@ %i",incomingReq.characteristic.UUID, didSendValue);
+}
+
+- (IBAction)sendAction:(id)sender {
+    NSLog(@"send");
 }
 
 
